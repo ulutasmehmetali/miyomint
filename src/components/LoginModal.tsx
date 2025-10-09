@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { X, Mail, Lock, AlertCircle, RefreshCw } from 'lucide-react';
+import { X, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -15,9 +14,6 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showResend, setShowResend] = useState(false);
-  const [resending, setResending] = useState(false);
-  const [resendSuccess, setResendSuccess] = useState(false);
 
   if (!isOpen) return null;
 
@@ -29,14 +25,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
     const { error } = await signIn(email, password);
 
     if (error) {
-      if (error.name === 'EmailNotConfirmed') {
-        setError(error.message);
-        setShowResend(true);
-      } else {
-        setError(error.message === 'Invalid login credentials'
-          ? 'E-posta veya şifre hatalı'
-          : error.message);
-      }
+      setError(error.message);
       setLoading(false);
     } else {
       onClose();
@@ -61,12 +50,6 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {resendSuccess && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-green-800">Doğrulama maili tekrar gönderildi. Lütfen email kutunuzu kontrol edin.</p>
-              </div>
-            )}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
@@ -118,34 +101,6 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
             >
               {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
             </button>
-
-            {showResend && (
-              <button
-                type="button"
-                onClick={async () => {
-                  setResending(true);
-                  setResendSuccess(false);
-                  try {
-                    const { error } = await supabase.auth.resend({
-                      type: 'signup',
-                      email: email,
-                    });
-                    if (!error) {
-                      setResendSuccess(true);
-                      setTimeout(() => setResendSuccess(false), 5000);
-                    }
-                  } catch (err) {
-                    console.error('Resend error:', err);
-                  }
-                  setResending(false);
-                }}
-                disabled={resending}
-                className="w-full bg-white border-2 border-teal-500 text-teal-600 py-3 px-6 rounded-lg font-semibold hover:bg-teal-50 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center justify-center gap-2"
-              >
-                <RefreshCw className={`w-5 h-5 ${resending ? 'animate-spin' : ''}`} />
-                {resending ? 'Gönderiliyor...' : 'Doğrulama Mailini Tekrar Gönder'}
-              </button>
-            )}
           </form>
 
           <div className="mt-6 text-center">

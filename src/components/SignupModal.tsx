@@ -85,8 +85,7 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                 <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-green-800">
                   <p className="font-semibold mb-2">Hesabınız başarıyla oluşturuldu!</p>
-                  <p className="mb-2">Email adresinize bir doğrulama maili gönderdik.</p>
-                  <p className="font-semibold">Önemli: Giriş yapabilmek için önce email'inizdeki doğrulama linkine tıklamanız gerekmektedir.</p>
+                  <p>Artık giriş yapabilirsiniz.</p>
                 </div>
               </div>
             )}

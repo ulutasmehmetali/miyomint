@@ -1,18 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Package, Clock, CheckCircle, XCircle, Truck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
-
-interface Order {
-  id: string;
-  order_number: string;
-  status: string;
-  total_amount: number;
-  items: any[];
-  shipping_address: any;
-  created_at: string;
-  payment_status: string;
-}
+import { localStorageService, Order } from '../lib/localStorage';
 
 export default function OrdersPage() {
   const { user } = useAuth();
@@ -27,14 +16,8 @@ export default function OrdersPage() {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setOrders(data || []);
+      const userOrders = localStorageService.getOrdersByUserId(user.id);
+      setOrders(userOrders.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
     } catch (error) {
       console.error('Error loading orders:', error);
     } finally {

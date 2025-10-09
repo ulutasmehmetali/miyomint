@@ -1,22 +1,19 @@
 import { useState, useEffect } from 'react';
-import { User, Mail, Phone, Save, AlertCircle, CheckCircle } from 'lucide-react';
+import { User, Mail, Save, AlertCircle, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { supabase } from '../lib/supabase';
 
 export default function ProfilePage() {
-  const { user, profile } = useAuth();
+  const { user, updateProfile } = useAuth();
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (profile) {
-      setFullName(profile.full_name || '');
-      setPhone(profile.phone || '');
+    if (user) {
+      setFullName(user.full_name || '');
     }
-  }, [profile]);
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,15 +22,9 @@ export default function ProfilePage() {
     setLoading(true);
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          full_name: fullName,
-          phone: phone,
-        })
-        .eq('id', user?.id);
-
-      if (error) throw error;
+      await updateProfile({
+        full_name: fullName,
+      });
 
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -100,23 +91,6 @@ export default function ProfilePage() {
                     required
                     className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
                     placeholder="Adınız Soyadınız"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2">
-                  Telefon
-                </label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    id="phone"
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                    placeholder="0555 555 55 55"
                   />
                 </div>
               </div>

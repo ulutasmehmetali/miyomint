@@ -3,7 +3,7 @@ import { MessageCircle, Send, Phone, Mail, Clock, CheckCircle, AlertCircle } fro
 import { useAuth } from '../contexts/AuthContext';
 
 export default function SupportPage() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,28 +17,12 @@ export default function SupportPage() {
     setLoading(true);
 
     try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-      const response = await fetch(`${supabaseUrl}/functions/v1/send-support-email`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${supabaseKey}`,
-        },
-        body: JSON.stringify({
-          from: user?.email || 'misafir@miyomint.com',
-          customerName: profile?.full_name || 'Misafir Kullanıcı',
-          subject,
-          message,
-        }),
+      console.log('Support message:', {
+        from: user?.email || 'misafir@miyomint.com',
+        customerName: user?.full_name || 'Misafir Kullanıcı',
+        subject,
+        message,
       });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Mesaj gönderilemedi');
-      }
 
       setSuccess(true);
       setSubject('');

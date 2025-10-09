@@ -1,157 +1,128 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { User, AuthError } from '@supabase/supabase-js';
-import { supabase, Profile } from '../lib/supabase';
+import { User, localStorageService } from '../lib/localStorage';
+
+interface AuthError {
+  message: string;
+  name?: string;
+  status?: number;
+}
 
 interface AuthContextType {
   user: User | null;
-  profile: Profile | null;
   loading: boolean;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: AuthError | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
+  updateProfile: (updates: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        loadProfile(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      (async () => {
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          await loadProfile(session.user.id);
-        } else {
-          setProfile(null);
-          setLoading(false);
-        }
-      })();
-    });
-
-    return () => subscription.unsubscribe();
+    const currentUser = localStorageService.getCurrentUser();
+    setUser(currentUser);
+    setLoading(false);
   }, []);
-
-  const loadProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-      setProfile(data);
-    } catch (error) {
-      console.error('Error loading profile:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/email-verified`,
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
+      const existingUser = localStorageService.getUserByEmail(email);
 
-      console.log('Signup response:', { data, error });
-
-      if (!error && data.user) {
-        console.log('User created:', data.user);
-        console.log('User identities:', data.user.identities);
-
-        if (data.user.identities && data.user.identities.length > 0) {
-          try {
-            const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-verification-email`;
-            console.log('Calling verification email function:', apiUrl);
-
-            const emailResponse = await fetch(apiUrl, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                email: data.user.email,
-                fullName: fullName,
-                confirmationUrl: `${window.location.origin}/email-verified`,
-              }),
-            });
-
-            console.log('Email response status:', emailResponse.status);
-
-            if (!emailResponse.ok) {
-              const errorData = await emailResponse.json();
-              console.error('Email send failed:', errorData);
-            } else {
-              const successData = await emailResponse.json();
-              console.log('Verification email sent successfully:', successData);
-            }
-          } catch (emailError) {
-            console.error('Failed to send verification email:', emailError);
+      if (existingUser) {
+        return {
+          error: {
+            message: 'Bu e-posta adresi zaten kayıtlı',
+            name: 'UserExists',
+            status: 400,
           }
-        } else {
-          console.log('User already exists or no identities created');
-        }
+        };
       }
 
-      return { error };
+      const newUser: User = {
+        id: crypto.randomUUID(),
+        email,
+        full_name: fullName,
+        created_at: new Date().toISOString(),
+      };
+
+      localStorage.setItem(`user_password_${newUser.id}`, password);
+
+      localStorageService.saveUser(newUser);
+      localStorageService.setCurrentUser(newUser);
+      setUser(newUser);
+
+      return { error: null };
     } catch (error) {
-      console.error('Signup error:', error);
-      return { error: error as AuthError };
+      return {
+        error: {
+          message: 'Kayıt sırasında bir hata oluştu',
+          name: 'SignUpError',
+          status: 500,
+        }
+      };
     }
   };
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const user = localStorageService.getUserByEmail(email);
 
-      if (error) return { error };
-
-      if (data.user && !data.user.email_confirmed_at) {
-        await supabase.auth.signOut();
+      if (!user) {
         return {
           error: {
-            message: 'Email adresiniz henüz doğrulanmamış. Lütfen email kutunuzu kontrol edin.',
-            name: 'EmailNotConfirmed',
-            status: 400,
-          } as AuthError,
+            message: 'E-posta veya şifre hatalı',
+            name: 'InvalidCredentials',
+            status: 401,
+          }
         };
       }
 
+      const storedPassword = localStorage.getItem(`user_password_${user.id}`);
+
+      if (storedPassword !== password) {
+        return {
+          error: {
+            message: 'E-posta veya şifre hatalı',
+            name: 'InvalidCredentials',
+            status: 401,
+          }
+        };
+      }
+
+      localStorageService.setCurrentUser(user);
+      setUser(user);
+
       return { error: null };
     } catch (error) {
-      return { error: error as AuthError };
+      return {
+        error: {
+          message: 'Giriş sırasında bir hata oluştu',
+          name: 'SignInError',
+          status: 500,
+        }
+      };
     }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    localStorageService.setCurrentUser(null);
+    setUser(null);
+  };
+
+  const updateProfile = async (updates: Partial<User>) => {
+    if (!user) return;
+
+    localStorageService.updateUser(user.id, updates);
+    const updatedUser = localStorageService.getCurrentUser();
+    setUser(updatedUser);
   };
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signUp, signIn, signOut, updateProfile }}>
       {children}
     </AuthContext.Provider>
   );
