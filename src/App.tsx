@@ -17,6 +17,7 @@ import SupportPage from './pages/SupportPage';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { localStorageService, Order } from './lib/localStorage';
 import { Product, CartItem } from './types';
+import { useEffect } from 'react';
 
 function AppContent() {
   const { user } = useAuth();
@@ -26,6 +27,17 @@ function AppContent() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupOpen, setSignupOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+
+  useEffect(() => {
+    const savedCart = localStorageService.getCart();
+    if (savedCart.length > 0) {
+      setCartItems(savedCart);
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorageService.saveCart(cartItems);
+  }, [cartItems]);
 
   const handleAddToCart = (product: Product) => {
     setCartItems((prev) => {
@@ -102,6 +114,7 @@ function AppContent() {
       localStorageService.saveOrder(newOrder);
 
       setCartItems([]);
+      localStorageService.clearCart();
       setCartOpen(false);
       alert(`Siparişiniz alındı! Sipariş numaranız: ${orderNumber}`);
       handleNavigate('orders');

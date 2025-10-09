@@ -20,9 +20,18 @@ export interface Order {
   created_at: string;
 }
 
+export interface CartItem {
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+  image: string;
+}
+
 const USERS_KEY = 'miyomint_users';
 const CURRENT_USER_KEY = 'miyomint_current_user';
 const ORDERS_KEY = 'miyomint_orders';
+const CART_KEY = 'miyomint_cart';
 
 export const localStorageService = {
   getUsers(): User[] {
@@ -81,6 +90,28 @@ export const localStorageService = {
       if (currentUser && currentUser.id === userId) {
         this.setCurrentUser(users[index]);
       }
+    }
+  },
+
+  getCart(): CartItem[] {
+    const cart = localStorage.getItem(CART_KEY);
+    return cart ? JSON.parse(cart) : [];
+  },
+
+  saveCart(items: CartItem[]): void {
+    localStorage.setItem(CART_KEY, JSON.stringify(items));
+  },
+
+  clearCart(): void {
+    localStorage.removeItem(CART_KEY);
+  },
+
+  updateOrderStatus(orderId: string, status: string): void {
+    const orders = this.getOrders();
+    const index = orders.findIndex(o => o.id === orderId);
+    if (index !== -1) {
+      orders[index].status = status;
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
     }
   }
 };
