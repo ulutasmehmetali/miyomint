@@ -1,27 +1,33 @@
-import { useState, useEffect } from 'react';
-import Header from './components/Header';
-import Footer from './components/Footer';
-import Cart from './components/Cart';
-import FlashSaleBanner from './components/FlashSaleBanner';
-import LoginModal from './components/LoginModal';
-import SignupModal from './components/SignupModal';
-import CheckoutModal from './components/CheckoutModal';
-import HomePage from './pages/HomePage';
-import ProductsPage from './pages/ProductsPage';
-import FAQPage from './pages/FAQPage';
-import AboutPage from './pages/AboutPage';
-import ContactPage from './pages/ContactPage';
-import ProfilePage from './pages/ProfilePage';
-import OrdersPage from './pages/OrdersPage';
-import SupportPage from './pages/SupportPage';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { localStorageService, Order } from './lib/localStorage';
-import { Product, CartItem } from './types';
-import { useEffect } from 'react';
+import { useEffect, useState } from "react";
+import toast, { Toaster } from "react-hot-toast";
+
+import Cart from "./components/Cart";
+import CheckoutModal from "./components/CheckoutModal";
+import FlashSaleBanner from "./components/FlashSaleBanner";
+import Footer from "./components/Footer";
+import Header from "./components/Header";
+import LoginModal from "./components/LoginModal";
+import SignupModal from "./components/SignupModal";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { supabaseService } from "./lib/supabaseService";
+import AboutPage from "./pages/AboutPage";
+import ContactPage from "./pages/ContactPage";
+import FAQPage from "./pages/FAQPage";
+import GuestCheckoutPage from "./pages/GuestCheckoutPage";
+import GuestRedirectPage from "./pages/GuestRedirectPage";
+import HomePage from "./pages/HomePage";
+import OrdersPage from "./pages/OrdersPage";
+import ProductsPage from "./pages/ProductsPage";
+import ProfilePage from "./pages/ProfilePage";
+import SupportPage from "./pages/SupportPage";
+import VerifyPage from "./pages/VerifyPage";
+import { CartItem, Order, Product } from "./types";
+
+const GUEST_CART_STORAGE_KEY = "miyomint-guest-cart";
 
 function AppContent() {
   const { user } = useAuth();
-  const [currentPage, setCurrentPage] = useState('home');
+  const [currentPage, setCurrentPage] = useState("home");
   const [cartOpen, setCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -29,59 +35,207 @@ function AppContent() {
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
 
   useEffect(() => {
-    const savedCart = localStorageService.getCart();
-    if (savedCart.length > 0) {
-      setCartItems(savedCart);
+    if (window.location.pathname.includes("/verify")) {
+      setCurrentPage("verify");
     }
   }, []);
 
   useEffect(() => {
-    localStorageService.saveCart(cartItems);
-  }, [cartItems]);
-
-  const handleAddToCart = (product: Product) => {
-    setCartItems((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
-      if (existing) {
-        return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
-        );
+    if (!user) {
+      if (typeof window === "undefined") {
+        return;
       }
-      return [...prev, { ...product, quantity: 1 }];
-    });
-    setCartOpen(true);
-  };
-
-  const handleBuyNow = (product: Product) => {
-    handleAddToCart(product);
-  };
-
-  const handleUpdateQuantity = (productId: string, quantity: number) => {
-    if (quantity <= 0) {
-      handleRemoveItem(productId);
+      try {
+        const raw = window.localStorage.getItem(GUEST_CART_STORAGE_KEY);
+        setCartItems(raw ? (JSON.parse(raw) as CartItem[]) : []);
+      } catch (error) {
+        console.error("Misafir sepeti okunamadi:", error);
+        setCartItems([]);
+      }
       return;
     }
-    setCartItems((prev) =>
-      prev.map((item) => (item.id === productId ? { ...item, quantity } : item))
+
+    const fetchCart = async () => {
+      try {
+        const data = await supabaseService.getCart(user.id);
+        setCartItems(data || []);
+      } catch (error) {
+        console.error("Sepet yuklenirken hata:", error);
+        setCartItems([]);
+      }
+    };
+
+    fetchCart();
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      return;
+    }
+    if (typeof window === "undefined") {
+      return;
+    }
+    try {
+      if (cartItems.length === 0) {
+        window.localStorage.removeItem(GUEST_CART_STORAGE_KEY);
+      } else {
+        window.localStorage.setItem(
+          GUEST_CART_STORAGE_KEY,
+          JSON.stringify(cartItems)
+        );
+      }
+    } catch (error) {
+      console.error("Misafir sepeti kaydedilemedi:", error);
+    }
+  }, [cartItems, user]);
+
+  const handleAddToCart = async (product: Product) => {
+    if (!product?.id) {
+      return;
+    }
+
+    const previousCart = [...cartItems];
+    const existing = cartItems.find(
+      (item) => item.product_id === product.id
     );
+
+    let nextCart: CartItem[];
+    if (existing) {
+      nextCart = cartItems.map((item) =>
+        item.product_id === product.id
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      );
+    } else {
+      const newItem: CartItem = {
+        user_id: user?.id ?? "guest",
+        product_id: product.id,
+        name: product.name,
+        price: product.price,
+        quantity: 1,
+        image: product.image,
+      };
+      nextCart = [...cartItems, newItem];
+    }
+
+    setCartItems(nextCart);
+    setCartOpen(true);
+
+    if (!user) {
+      toast.success(`${product.name} sepete eklendi.`);
+      return;
+    }
+
+    try {
+      if (existing?.id) {
+        await supabaseService.updateCartItem(
+          existing.id,
+          existing.quantity + 1
+        );
+      } else {
+        await supabaseService.addToCart({
+          user_id: user.id,
+          product_id: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: 1,
+          image: product.image,
+        });
+      }
+
+      const syncedCart = await supabaseService.getCart(user.id);
+      setCartItems(syncedCart || nextCart);
+      toast.success(`${product.name} sepete eklendi.`);
+    } catch (error) {
+      console.error("Sepete eklenirken hata:", error);
+      setCartItems(previousCart);
+      toast.error("Urun sepete eklenemedi.");
+    }
   };
 
-  const handleRemoveItem = (productId: string) => {
-    setCartItems((prev) => prev.filter((item) => item.id !== productId));
+  const handleBuyNow = async (product: Product) => {
+    try {
+      await handleAddToCart(product);
+      setCartOpen(false);
+      setCheckoutModalOpen(true);
+    } catch (error) {
+      console.error("Satin alma hatasi:", error);
+      toast.error("Satin alma baslatilamadi.");
+    }
+  };
+
+  const handleRemoveItem = async (productId: string) => {
+    const target = cartItems.find((item) => item.product_id === productId);
+    if (!target) {
+      return;
+    }
+
+    const previousCart = [...cartItems];
+    setCartItems((prev) =>
+      prev.filter((item) => item.product_id !== productId)
+    );
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      if (target.id) {
+        await supabaseService.removeCartItem(target.id);
+      }
+      const syncedCart = await supabaseService.getCart(user.id);
+      setCartItems(syncedCart || []);
+    } catch (error) {
+      console.error("Urun sepetten silinemedi:", error);
+      setCartItems(previousCart);
+      toast.error("Urun sepetten silinemedi.");
+    }
+  };
+
+  const handleUpdateQuantity = async (
+    productId: string,
+    quantity: number
+  ) => {
+    if (quantity <= 0) {
+      await handleRemoveItem(productId);
+      return;
+    }
+
+    const target = cartItems.find((item) => item.product_id === productId);
+    if (!target) {
+      return;
+    }
+
+    const previousCart = [...cartItems];
+    setCartItems((prev) =>
+      prev.map((item) =>
+        item.product_id === productId ? { ...item, quantity } : item
+      )
+    );
+
+    if (!user) {
+      return;
+    }
+
+    try {
+      if (target.id) {
+        await supabaseService.updateCartItem(target.id, quantity);
+      }
+    } catch (error) {
+      console.error("Miktar guncellenemedi:", error);
+      setCartItems(previousCart);
+      toast.error("Miktar guncellenemedi.");
+    }
   };
 
   const handleCheckout = () => {
+    setCartOpen(false);
     if (!user) {
       setCheckoutModalOpen(true);
       return;
     }
-    completeCheckout();
-  };
 
-  const handleGuestCheckout = () => {
-    setCheckoutModalOpen(false);
-    alert('Misafir olarak sipariş özelliği yakında eklenecek. Şimdilik lütfen giriş yapın.');
-    setLoginOpen(true);
+    void completeCheckout();
   };
 
   const handleLoginForCheckout = () => {
@@ -89,121 +243,174 @@ function AppContent() {
     setLoginOpen(true);
   };
 
+  const handleGuestCheckout = () => {
+    setCartOpen(false);
+    setLoginOpen(false);
+    setCheckoutModalOpen(false);
+    setCurrentPage("guestRedirect");
+  };
+
   const completeCheckout = async () => {
-    if (!user) return;
+    if (!user) {
+      return;
+    }
 
     try {
       const orderNumber = `MYM${Date.now().toString().slice(-8)}`;
-      const totalAmount = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const totalAmount = cartItems.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
 
       const newOrder: Order = {
         id: crypto.randomUUID(),
         user_id: user.id,
         order_number: orderNumber,
-        status: 'pending',
+        status: "pending",
         total_amount: totalAmount,
-        items: cartItems.map(item => ({
-          id: item.id,
+        created_at: new Date().toISOString(),
+        items: cartItems.map((item) => ({
+          product_id: item.product_id,
           name: item.name,
           quantity: item.quantity,
           price: item.price,
         })),
-        created_at: new Date().toISOString(),
       };
 
-      localStorageService.saveOrder(newOrder);
+      await supabaseService.saveOrder(newOrder);
+      await supabaseService.clearCart(user.id);
 
       setCartItems([]);
-      localStorageService.clearCart();
-      setCartOpen(false);
-      alert(`Siparişiniz alındı! Sipariş numaranız: ${orderNumber}`);
-      handleNavigate('orders');
-    } catch (error: any) {
-      console.error('Checkout error:', error);
-      alert('Sipariş oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.');
+      toast.success(`Siparisiniz alindi! #${orderNumber}`);
+      setCurrentPage("orders");
+    } catch (error) {
+      console.error("Checkout hatasi:", error);
+      toast.error("Siparis olusturulurken bir hata olustu.");
     }
   };
 
   const handleNavigate = (page: string) => {
     setCurrentPage(page);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const cartItemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const cartItemCount = cartItems.reduce(
+    (sum, item) => sum + item.quantity,
+    0
+  );
 
   const renderPage = () => {
     switch (currentPage) {
-      case 'home':
-        return <HomePage onAddToCart={handleAddToCart} onBuyNow={handleBuyNow} onNavigate={handleNavigate} />;
-      case 'products':
-        return <ProductsPage onAddToCart={handleAddToCart} onBuyNow={handleBuyNow} />;
-      case 'faq':
+      case "home":
+        return (
+          <HomePage
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+            onNavigate={handleNavigate}
+          />
+        );
+      case "products":
+        return (
+          <ProductsPage
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+          />
+        );
+      case "faq":
         return <FAQPage />;
-      case 'about':
+      case "about":
         return <AboutPage />;
-      case 'contact':
+      case "contact":
         return <ContactPage />;
-      case 'profile':
+      case "profile":
         return <ProfilePage />;
-      case 'orders':
+      case "orders":
         return <OrdersPage />;
-      case 'support':
+      case "support":
         return <SupportPage />;
+      case "guestRedirect":
+        return (
+          <GuestRedirectPage
+            onCompleteRedirect={() => setCurrentPage("guestCheckout")}
+          />
+        );
+      case "guestCheckout":
+        return (
+          <GuestCheckoutPage
+            items={cartItems}
+            onCancel={() => handleNavigate("home")}
+            onPaymentRedirect={() =>
+              setTimeout(() => handleNavigate("orders"), 3000)
+            }
+            onClearCart={() => setCartItems([])}
+          />
+        );
+      case "verify":
+        return <VerifyPage />;
       default:
-        return <HomePage onAddToCart={handleAddToCart} onBuyNow={handleBuyNow} onNavigate={handleNavigate} />;
+        return (
+          <HomePage
+            onAddToCart={handleAddToCart}
+            onBuyNow={handleBuyNow}
+            onNavigate={handleNavigate}
+          />
+        );
     }
   };
 
   return (
     <div className="min-h-screen bg-white">
-      <Header
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        cartItemCount={cartItemCount}
-        onCartClick={() => setCartOpen(true)}
-        onLoginClick={() => setLoginOpen(true)}
-      />
-      <FlashSaleBanner />
+      {currentPage !== "verify" && <FlashSaleBanner />}
+      {currentPage !== "verify" && (
+        <Header
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          cartItemCount={cartItemCount}
+          onCartClick={() => setCartOpen(true)}
+          onLoginClick={() => setLoginOpen(true)}
+        />
+      )}
 
-      <main className="min-h-screen">
-        {renderPage()}
-      </main>
+      <main className="min-h-screen">{renderPage()}</main>
 
-      <Footer onNavigate={handleNavigate} />
+      {currentPage !== "verify" && <Footer onNavigate={handleNavigate} />}
 
-      <Cart
-        isOpen={cartOpen}
-        onClose={() => setCartOpen(false)}
-        items={cartItems}
-        onUpdateQuantity={handleUpdateQuantity}
-        onRemoveItem={handleRemoveItem}
-        onCheckout={handleCheckout}
-      />
+      {currentPage !== "verify" && (
+        <>
+          <Cart
+            isOpen={cartOpen}
+            items={cartItems}
+            onClose={() => setCartOpen(false)}
+            onUpdateQuantity={handleUpdateQuantity}
+            onRemoveItem={handleRemoveItem}
+            onCheckout={handleCheckout}
+          />
+          <LoginModal
+            isOpen={loginOpen}
+            onClose={() => setLoginOpen(false)}
+            onSwitchToSignup={() => {
+              setLoginOpen(false);
+              setSignupOpen(true);
+            }}
+          />
+          <SignupModal
+            isOpen={signupOpen}
+            onClose={() => setSignupOpen(false)}
+            onSwitchToLogin={() => {
+              setSignupOpen(false);
+              setLoginOpen(true);
+            }}
+          />
+          <CheckoutModal
+            isOpen={checkoutModalOpen}
+            onClose={() => setCheckoutModalOpen(false)}
+            onGuestCheckout={handleGuestCheckout}
+            onLoginCheckout={handleLoginForCheckout}
+          />
+        </>
+      )}
 
-      <LoginModal
-        isOpen={loginOpen}
-        onClose={() => setLoginOpen(false)}
-        onSwitchToSignup={() => {
-          setLoginOpen(false);
-          setSignupOpen(true);
-        }}
-      />
-
-      <SignupModal
-        isOpen={signupOpen}
-        onClose={() => setSignupOpen(false)}
-        onSwitchToLogin={() => {
-          setSignupOpen(false);
-          setLoginOpen(true);
-        }}
-      />
-
-      <CheckoutModal
-        isOpen={checkoutModalOpen}
-        onClose={() => setCheckoutModalOpen(false)}
-        onGuestCheckout={handleGuestCheckout}
-        onLoginCheckout={handleLoginForCheckout}
-      />
+      <Toaster position="top-right" reverseOrder={false} />
     </div>
   );
 }

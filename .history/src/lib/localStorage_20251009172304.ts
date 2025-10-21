@@ -1,8 +1,14 @@
+// src/lib/localStorage.ts
 export interface User {
   id: string;
   email: string;
   full_name: string;
   created_at: string;
+
+  // ✅ yeni alanlar
+  email_verified?: boolean;
+  verification_token?: string;
+  verification_expires_at?: string; // ISO
 }
 
 export interface Order {
@@ -45,9 +51,35 @@ export const localStorageService = {
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
   },
 
+  updateUserById(userId: string, patch: Partial<User>) {
+    const users = this.getUsers();
+    const i = users.findIndex(u => u.id === userId);
+    if (i !== -1) {
+      users[i] = { ...users[i], ...patch };
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      const cur = this.getCurrentUser();
+      if (cur?.id === userId) this.setCurrentUser(users[i]);
+    }
+  },
+
   getUserByEmail(email: string): User | null {
     const users = this.getUsers();
     return users.find(u => u.email === email) || null;
+  },
+
+  // ✅ token ile kullanıcı bulma
+  getUserByVerificationToken(token: string): User | null {
+    const users = this.getUsers();
+    return users.find(u => u.verification_token === token) || null;
+  },
+
+  // ✅ doğrulama işaretleme
+  markUserVerified(userId: string) {
+    this.updateUserById(userId, {
+      email_verified: true,
+      verification_token: undefined,
+      verification_expires_at: undefined,
+    });
   },
 
   getCurrentUser(): User | null {
@@ -77,20 +109,6 @@ export const localStorageService = {
   getOrdersByUserId(userId: string): Order[] {
     const orders = this.getOrders();
     return orders.filter(o => o.user_id === userId);
-  },
-
-  updateUser(userId: string, updates: Partial<User>): void {
-    const users = this.getUsers();
-    const index = users.findIndex(u => u.id === userId);
-    if (index !== -1) {
-      users[index] = { ...users[index], ...updates };
-      localStorage.setItem(USERS_KEY, JSON.stringify(users));
-
-      const currentUser = this.getCurrentUser();
-      if (currentUser && currentUser.id === userId) {
-        this.setCurrentUser(users[index]);
-      }
-    }
   },
 
   getCart(): CartItem[] {

@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { X, Mail, Lock, User, AlertCircle, CheckCircle } from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
+import { useState } from "react";
+import { X, Mail, Lock, User, AlertCircle, CheckCircle } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
 
 interface SignupModalProps {
   isOpen: boolean;
@@ -10,60 +10,87 @@ interface SignupModalProps {
 
 export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: SignupModalProps) {
   const { signUp } = useAuth();
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [error, setError] = useState('');
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   if (!isOpen) return null;
 
+  const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
+  const isStrongPassword = (value: string) =>
+    value.length >= 6 && /[A-Z]/.test(value) && /\d/.test(value);
+
+  const resetForm = () => {
+    setFirstName("");
+    setLastName("");
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setSuccess(false);
 
-    if (password !== confirmPassword) {
-      setError('Şifreler eşleşmiyor');
+    if (!firstName.trim() || !lastName.trim()) {
+      setError("Lutfen ad ve soyadinizi giriniz.");
       return;
     }
 
-    if (password.length < 6) {
-      setError('Şifre en az 6 karakter olmalıdır');
+    if (!isValidEmail(email)) {
+      setError("Gecerli bir e-posta adresi giriniz.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Sifreler eslesmiyor.");
+      return;
+    }
+
+    if (!isStrongPassword(password)) {
+      setError("Sifre en az 6 karakter, 1 buyuk harf ve 1 rakam icermelidir.");
       return;
     }
 
     setLoading(true);
 
-    const { error } = await signUp(email, password, fullName);
+    try {
+      const fullName = `${firstName.trim()} ${lastName.trim()}`;
+      const { error: signUpError } = await signUp(email, password, fullName);
 
-    if (error) {
-      setError(error.message === 'User already registered'
-        ? 'Bu e-posta adresi zaten kayıtlı'
-        : error.message);
-      setLoading(false);
-    } else {
+      if (signUpError) {
+        const message = signUpError.message || "Kayit sirasinda bir hata olustu.";
+
+        if (message.toLowerCase().includes("already registered")) {
+          setError("Bu e-posta adresiyle zaten bir hesap acilmis. Lutfen giris yapmayi deneyin.");
+        } else {
+          setError(message);
+        }
+        return;
+      }
+
       setSuccess(true);
+      resetForm();
+    } catch (err: any) {
+      console.error("Signup error:", err);
+      setError(`Bir hata olustu: ${err?.message || "Bilinmeyen hata"}`);
+    } finally {
       setLoading(false);
-      setTimeout(() => {
-        onClose();
-        setFullName('');
-        setEmail('');
-        setPassword('');
-        setConfirmPassword('');
-        setSuccess(false);
-      }, 5000);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6">
+        <div className="p-6 relative">
           <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Üye Ol</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Uye Ol</h2>
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-gray-600 transition-colors p-2 active:scale-95"
@@ -73,41 +100,75 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Hata mesaji */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-800">{error}</p>
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex flex-col gap-2">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-red-800">{error}</p>
+                </div>
+                {error.toLowerCase().includes("hesap") && (
+                  <button
+                    onClick={onSwitchToLogin}
+                    type="button"
+                    className="text-sm text-teal-700 font-semibold hover:text-teal-800 text-left mt-1"
+                  >
+                    Giris yap
+                  </button>
+                )}
               </div>
             )}
 
+            {/* Basari mesaji */}
             {success && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
                 <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-green-800">
-                  <p className="font-semibold mb-2">Hesabınız başarıyla oluşturuldu!</p>
-                  <p>Artık giriş yapabilirsiniz.</p>
+                  <p className="font-semibold mb-2">Hesap olusturuldu.</p>
+                  <p>Lutfen e-posta adresinizi kontrol edin ve dogrulama baglantisina tiklayin.</p>
                 </div>
               </div>
             )}
 
+            {/* Ad */}
             <div>
-              <label htmlFor="fullName" className="block text-sm font-medium text-gray-700 mb-2">
-                Ad Soyad
+              <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
+                Ad
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
-                  id="fullName"
+                  id="firstName"
                   type="text"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                   required
-                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                  placeholder="Adınız Soyadınız"
+                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="Adiniz"
                 />
               </div>
             </div>
 
+            {/* Soyad */}
+            <div>
+              <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
+                Soyad
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  id="lastName"
+                  type="text"
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
+                  required
+                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="Soyadiniz"
+                />
+              </div>
+            </div>
+
+            {/* Email */}
             <div>
               <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-2">
                 E-posta
@@ -120,15 +181,16 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
+                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
                   placeholder="ornek@email.com"
                 />
               </div>
             </div>
 
+            {/* Sifre */}
             <div>
               <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-2">
-                Şifre
+                Sifre
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -139,15 +201,16 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                  placeholder="En az 6 karakter"
+                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="En az 6 karakter, 1 buyuk harf ve 1 rakam"
                 />
               </div>
             </div>
 
+            {/* Sifre Tekrar */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
-                Şifre Tekrar
+                Sifre Tekrar
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -158,8 +221,8 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent transition-all"
-                  placeholder="Şifrenizi tekrar girin"
+                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  placeholder="Sifrenizi tekrar girin"
                 />
               </div>
             </div>
@@ -167,20 +230,20 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-teal-500 to-teal-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-teal-600 hover:to-teal-700 transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
+              className="w-full bg-gradient-to-r from-teal-500 to-teal-600 text-white py-3 px-6 rounded-lg font-semibold hover:from-teal-600 hover:to-teal-700 transition-all disabled:opacity-50"
             >
-              {loading ? 'Hesap oluşturuluyor...' : 'Üye Ol'}
+              {loading ? "Hesap olusturuluyor..." : "Uye Ol"}
             </button>
           </form>
 
           <div className="mt-6 text-center">
             <p className="text-gray-600">
-              Zaten hesabınız var mı?{' '}
+              Zaten hesabiniz var mi?{" "}
               <button
                 onClick={onSwitchToLogin}
                 className="text-teal-600 font-semibold hover:text-teal-700 transition-colors"
               >
-                Giriş Yap
+                Giris Yap
               </button>
             </p>
           </div>
