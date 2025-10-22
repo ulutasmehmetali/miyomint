@@ -28,13 +28,49 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const ensureProfile = async (
     sessionUser: any,
     fallbackEmail?: string,
-    fallbackFullName?: string
+    fallbackFullName?: string,
+    accessToken?: string
   ): Promise<User> => {
     try {
       const profile = await supabaseService.getProfile(sessionUser.id);
 
       if (sessionUser.email_confirmed_at && !profile.email_verified) {
-        await supabaseService.updateProfile(sessionUser.id, { email_verified: true });
+        try {
+          await supabaseService.updateProfile(sessionUser.id, { email_verified: true });
+          return { ...profile, email_verified: true };
+        } catch (updateError) {
+          console.warn("Profil update hatasi (RLS olabilir), REST denenecek:", updateError);
+          if (accessToken) {
+            try {
+              const response = await fetch(
+                `${SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(sessionUser.id)}`,
+                {
+                  method: "PATCH",
+                  headers: {
+                    "Content-Type": "application/json",
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: `Bearer ${accessToken}`,
+                    Prefer: "return=representation",
+                  },
+                  body: JSON.stringify({ email_verified: true }),
+                }
+              );
+
+              if (response.ok) {
+                const updated = await response.json();
+                console.log("Profil update REST basarili:", updated);
+                const row =
+                  Array.isArray(updated) && updated.length > 0 ? updated[0] : { ...profile, email_verified: true };
+                return row as User;
+              } else {
+                const text = await response.text();
+                console.error("Profil update REST hata:", response.status, text);
+              }
+            } catch (restErr) {
+              console.error("Profil update REST istisna:", restErr);
+            }
+          }
+        }
         return { ...profile, email_verified: true };
       }
 
@@ -49,6 +85,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         created_at: sessionUser.created_at || new Date().toISOString(),
         email_verified: Boolean(sessionUser.email_confirmed_at),
       };
+
+      if (accessToken) {
+        try {
+          const response = await fetch(`${SUPABASE_URL}/rest/v1/profiles`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              apikey: SUPABASE_ANON_KEY,
+              Authorization: `Bearer ${accessToken}`,
+              Prefer: "return=representation",
+            },
+            body: JSON.stringify(payload),
+          });
+
+          if (!response.ok) {
+            const text = await response.text();
+            console.error("Profil create REST hata:", response.status, text);
+          } else {
+            const created = await response.json();
+            console.log("Profil create REST basarili:", created);
+            return Array.isArray(created) && created.length > 0 ? created[0] : payload;
+          }
+        } catch (restError) {
+          console.error("Profil create REST istisna:", restError);
+        }
+      }
 
       try {
         await supabaseService.createProfile(payload);
@@ -257,7 +319,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error("setSession beklenmedik hata:", sessionErr);
         });
 
-      ensureProfile(sessionUser, email)
+      ensureProfile(
+        sessionUser,
+        email,
+        sessionUser.user_metadata?.full_name,
+        accessToken
+      )
         .then((profile) => {
           console.log("[Auth] ensureProfile resolved", profile);
           setUser(profile);

@@ -1,12 +1,16 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Mail, Lock, User, AlertCircle, CheckCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { SUPABASE_ANON_KEY, SUPABASE_FUNCTIONS_URL } from "../lib/supabaseClient";
 
 interface SignupModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSwitchToLogin: () => void;
 }
+
+const HCAPTCHA_SITE_KEY = "acea3962-2204-480e-ab7a-2db0b79273ce";
+const CAPTCHA_CONTAINER_ID = "signup-hcaptcha";
 
 export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: SignupModalProps) {
   const { signUp } = useAuth();
@@ -16,14 +20,23 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [captchaError, setCaptchaError] = useState("");
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  if (!isOpen) return null;
+  const captchaWidgetIdRef = useRef<string | null>(null);
 
   const isValidEmail = (value: string) => /\S+@\S+\.\S+/.test(value);
   const isStrongPassword = (value: string) =>
     value.length >= 6 && /[A-Z]/.test(value) && /\d/.test(value);
+
+  const resetCaptcha = () => {
+    if (window.hcaptcha && captchaWidgetIdRef.current) {
+      window.hcaptcha.reset(captchaWidgetIdRef.current);
+    }
+    setCaptchaToken(null);
+    setCaptchaError("");
+  };
 
   const resetForm = () => {
     setFirstName("");
@@ -31,12 +44,89 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
     setEmail("");
     setPassword("");
     setConfirmPassword("");
+    resetCaptcha();
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const renderCaptcha = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const api = window.hcaptcha;
+      const container = document.getElementById(CAPTCHA_CONTAINER_ID);
+
+      if (!api || !container) {
+        setTimeout(renderCaptcha, 200);
+        return;
+      }
+
+      container.innerHTML = "";
+      captchaWidgetIdRef.current = api.render(container, {
+        sitekey: HCAPTCHA_SITE_KEY,
+        callback: (token: string) => {
+          setCaptchaToken(token);
+          setCaptchaError("");
+        },
+        "error-callback": () => {
+          setCaptchaToken(null);
+          setCaptchaError("Guvenlik dogrulamasi basarisiz oldu. Lutfen tekrar deneyin.");
+        },
+        "expired-callback": () => {
+          setCaptchaToken(null);
+          setCaptchaError("Guvenlik dogrulamasi suresi doldu. Lutfen tekrar deneyin.");
+        },
+      });
+    };
+
+    renderCaptcha();
+
+    return () => {
+      cancelled = true;
+      resetCaptcha();
+      const container = document.getElementById(CAPTCHA_CONTAINER_ID);
+      if (container) {
+        container.innerHTML = "";
+      }
+    };
+  }, [isOpen]);
+
+  const verifyCaptcha = async (token: string) => {
+    try {
+      const response = await fetch(`${SUPABASE_FUNCTIONS_URL}/verify-hcaptcha`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+          apikey: SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ token }),
+      });
+
+      const result = (await response.json()) as { success: boolean; error?: string };
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Dogrulama basarisiz");
+      }
+
+      return true;
+    } catch (err: any) {
+      console.error("hCaptcha validation error:", err);
+      setCaptchaError(err?.message || "Guvenlik dogrulamasi basarisiz oldu. Lutfen yeniden deneyin.");
+      return false;
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess(false);
+    setCaptchaError("");
 
     if (!firstName.trim() || !lastName.trim()) {
       setError("Lutfen ad ve soyadinizi giriniz.");
@@ -58,9 +148,21 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       return;
     }
 
+    if (!captchaToken) {
+      setCaptchaError("Lutfen guvenlik dogrulamasini tamamlayin.");
+      return;
+    }
+
     setLoading(true);
 
     try {
+      const captchaOk = await verifyCaptcha(captchaToken);
+      if (!captchaOk) {
+        resetCaptcha();
+        setLoading(false);
+        return;
+      }
+
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
       const { error: signUpError } = await signUp(email, password, fullName);
 
@@ -72,6 +174,8 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
         } else {
           setError(message);
         }
+
+        resetCaptcha();
         return;
       }
 
@@ -80,10 +184,15 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
     } catch (err: any) {
       console.error("Signup error:", err);
       setError(`Bir hata olustu: ${err?.message || "Bilinmeyen hata"}`);
+      resetCaptcha();
     } finally {
       setLoading(false);
     }
   };
+
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -100,7 +209,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Hata mesaji */}
             {error && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex flex-col gap-2">
                 <div className="flex items-start gap-3">
@@ -119,7 +227,13 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
               </div>
             )}
 
-            {/* Basari mesaji */}
+            {captchaError && !error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-800">{captchaError}</p>
+              </div>
+            )}
+
             {success && (
               <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-start gap-3">
                 <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -130,7 +244,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
               </div>
             )}
 
-            {/* Ad */}
             <div>
               <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
                 Ad
@@ -149,7 +262,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
               </div>
             </div>
 
-            {/* Soyad */}
             <div>
               <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
                 Soyad
@@ -168,7 +280,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
               </div>
             </div>
 
-            {/* Email */}
             <div>
               <label htmlFor="signup-email" className="block text-sm font-medium text-gray-700 mb-2">
                 E-posta
@@ -187,7 +298,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
               </div>
             </div>
 
-            {/* Sifre */}
             <div>
               <label htmlFor="signup-password" className="block text-sm font-medium text-gray-700 mb-2">
                 Sifre
@@ -207,7 +317,6 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
               </div>
             </div>
 
-            {/* Sifre Tekrar */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
                 Sifre Tekrar
@@ -225,6 +334,11 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                   placeholder="Sifrenizi tekrar girin"
                 />
               </div>
+            </div>
+
+            <div>
+              <div id={CAPTCHA_CONTAINER_ID} className="min-h-[78px]" />
+              {captchaError && <p className="text-sm text-red-600 mt-2">{captchaError}</p>}
             </div>
 
             <button
@@ -252,3 +366,4 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
     </div>
   );
 }
+
