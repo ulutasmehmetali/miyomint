@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Mail, Lock, User, AlertCircle, CheckCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { HCAPTCHA_SITE_KEY } from "../constants/captcha";
 
 interface SignupModalProps {
   isOpen: boolean;
@@ -8,7 +9,6 @@ interface SignupModalProps {
   onSwitchToLogin: () => void;
 }
 
-const HCAPTCHA_SITE_KEY = "acea3962-2204-480e-ab7a-2db0b79273ce";
 const CAPTCHA_CONTAINER_ID = "signup-hcaptcha";
 
 export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: SignupModalProps) {

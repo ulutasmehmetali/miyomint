@@ -1,12 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { X, Mail, Lock, AlertCircle, CheckCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
+import { HCAPTCHA_SITE_KEY } from "../constants/captcha";
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSwitchToSignup: () => void;
 }
+
+const CAPTCHA_CONTAINER_ID = "login-hcaptcha";
 
 export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginModalProps) {
   const { signIn } = useAuth();
@@ -15,8 +18,70 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaError, setCaptchaError] = useState("");
+  const captchaWidgetIdRef = useRef<string | null>(null);
 
   if (!isOpen) return null;
+
+  const resetCaptcha = () => {
+    setCaptchaToken(null);
+    setCaptchaError("");
+    if (window.hcaptcha && captchaWidgetIdRef.current) {
+      window.hcaptcha.reset(captchaWidgetIdRef.current);
+    }
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const renderCaptcha = () => {
+      if (cancelled) return;
+
+      const api = window.hcaptcha;
+      const container = document.getElementById(CAPTCHA_CONTAINER_ID);
+
+      if (!api || !container) {
+        setTimeout(renderCaptcha, 200);
+        return;
+      }
+
+      container.innerHTML = "";
+
+      captchaWidgetIdRef.current = api.render(container, {
+        sitekey: HCAPTCHA_SITE_KEY,
+        callback: (token: string) => {
+          setCaptchaToken(token);
+          setCaptchaError("");
+        },
+        "error-callback": () => {
+          setCaptchaToken(null);
+          setCaptchaError("Guvenlik dogrulamasi basarisiz oldu. Lutfen tekrar deneyin.");
+        },
+        "expired-callback": () => {
+          setCaptchaToken(null);
+          setCaptchaError("Guvenlik dogrulamasi suresi doldu. Lutfen tekrar deneyin.");
+        },
+      });
+    };
+
+    renderCaptcha();
+
+    return () => {
+      cancelled = true;
+      resetCaptcha();
+      if (captchaWidgetIdRef.current && window.hcaptcha?.remove) {
+        window.hcaptcha.remove(captchaWidgetIdRef.current);
+      }
+      captchaWidgetIdRef.current = null;
+      const container = document.getElementById(CAPTCHA_CONTAINER_ID);
+      if (container) container.innerHTML = "";
+    };
+  }, [isOpen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,11 +91,19 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
     console.log("[LoginModal] submit", { email });
 
     try {
-      const { error } = await signIn(email, password);
+      if (!captchaToken) {
+        setCaptchaError("Lutfen guvenlik dogrulamasini tamamlayin.");
+        return;
+      }
+
+      const { error } = await signIn(email, password, captchaToken ?? undefined);
       console.log("[LoginModal] signIn result", { error });
 
       if (error) {
         setError(error.message);
+        if (error.message.toLowerCase().includes("captcha")) {
+          setCaptchaError(error.message);
+        }
         return;
       }
 
@@ -44,10 +117,16 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
       }, 1500);
     } catch (err: any) {
       console.error("LoginModal submit error:", err);
-      setError(err?.message || "Giriş sırasında beklenmeyen bir hata oluştu.");
+      const message = err?.message || "Giriş sırasında beklenmeyen bir hata oluştu.";
+      if (message.toLowerCase().includes("captcha")) {
+        setCaptchaError(message);
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
       console.log("[LoginModal] loading false");
+      resetCaptcha();
     }
   };
 
@@ -70,6 +149,13 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 <p className="text-sm text-red-800">{error}</p>
+              </div>
+            )}
+
+            {captchaError && !error && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm text-red-800">{captchaError}</p>
               </div>
             )}
 
@@ -124,6 +210,11 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
                   placeholder="Şifrenizi girin"
                 />
               </div>
+            </div>
+
+            <div>
+              <div id={CAPTCHA_CONTAINER_ID} className="min-h-[78px]" />
+              {captchaError && <p className="text-sm text-red-600 mt-2">{captchaError}</p>}
             </div>
 
             <button
