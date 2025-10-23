@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from "react
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from "../lib/supabaseClient";
 import { supabaseService } from "../lib/supabaseService";
 import { User } from "../types";
+import { buildVerifyRedirectUrl } from "../utils/verifyRedirect";
 
 interface AuthError {
   message: string;
@@ -179,7 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         options: {
           data: { full_name: fullName },
-          emailRedirectTo: `${window.location.origin}/verify`,
+          emailRedirectTo: buildVerifyRedirectUrl(),
           captchaToken,
         },
       });
@@ -386,7 +387,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         type: "signup",
         email: user.email,
         options: {
-          emailRedirectTo: `${window.location.origin}/verify`,
+          emailRedirectTo: buildVerifyRedirectUrl(),
         },
       });
 

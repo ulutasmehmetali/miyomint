@@ -22,6 +22,7 @@ import ProfilePage from "./pages/ProfilePage";
 import SupportPage from "./pages/SupportPage";
 import VerifyPage from "./pages/VerifyPage";
 import { CartItem, Order, Product } from "./types";
+import { shouldShowVerifyPage } from "./utils/verifyRedirect";
 
 const GUEST_CART_STORAGE_KEY = "miyomint-guest-cart";
 
@@ -35,7 +36,11 @@ function AppContent() {
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
 
   useEffect(() => {
-    if (window.location.pathname.includes("/verify")) {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (window.location.pathname.includes("/verify") || shouldShowVerifyPage()) {
       setCurrentPage("verify");
     }
   }, []);

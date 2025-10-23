@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle, Loader2, XCircle, Mail } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 import { supabase, SUPABASE_ANON_KEY, SUPABASE_URL } from "../lib/supabaseClient";
+import { buildVerifyRedirectUrl, VERIFY_REDIRECT_PARAM, VERIFY_REDIRECT_VALUE } from "../utils/verifyRedirect";
 import type { VerifyOtpParams } from "@supabase/supabase-js";
 
 type VerifyState = "loading" | "success" | "error" | "expired";
@@ -229,6 +230,20 @@ export default function VerifyPage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   const params = useMemo(buildParams, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.get(VERIFY_REDIRECT_PARAM) === VERIFY_REDIRECT_VALUE) {
+      currentUrl.searchParams.delete(VERIFY_REDIRECT_PARAM);
+      const search = currentUrl.searchParams.toString();
+      const next = `${currentUrl.pathname}${search ? `?${search}` : ""}${currentUrl.hash}`;
+      window.history.replaceState({}, "", next);
+    }
+  }, []);
 
   const transitionStatus = (next: VerifyState, reason?: string) => {
     console.log(`[Verify] status ${status} -> ${next}`, reason ?? "");
@@ -482,7 +497,7 @@ export default function VerifyPage() {
         type: "signup",
         email: user.email,
         options: {
-          emailRedirectTo: `${window.location.origin}/verify`,
+          emailRedirectTo: buildVerifyRedirectUrl(),
         },
       });
 

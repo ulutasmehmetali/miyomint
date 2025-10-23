@@ -18,13 +18,23 @@ DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
 -- Create function to handle new user profile creation
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  new_full_name text := '';
 BEGIN
+  -- Safely extract full_name even if raw_user_meta_data is missing
+  new_full_name := COALESCE(
+    (to_jsonb(NEW)->'raw_user_meta_data'->>'full_name'),
+    ''
+  );
+
   INSERT INTO public.profiles (id, email, full_name)
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', '')
-  );
+    new_full_name
+  )
+  ON CONFLICT (id) DO NOTHING;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

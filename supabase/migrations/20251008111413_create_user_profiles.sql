@@ -76,13 +76,22 @@ END $$;
 -- Create function to automatically create profile on signup
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  new_full_name text := '';
 BEGIN
+  new_full_name := COALESCE(
+    (to_jsonb(NEW)->'raw_user_meta_data'->>'full_name'),
+    ''
+  );
+
   INSERT INTO public.profiles (id, email, full_name)
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', '')
-  );
+    new_full_name
+  )
+  ON CONFLICT (id) DO NOTHING;
+
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
