@@ -22,8 +22,6 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
   const [captchaError, setCaptchaError] = useState("");
   const captchaWidgetIdRef = useRef<string | null>(null);
 
-  if (!isOpen) return null;
-
   const resetCaptcha = () => {
     setCaptchaToken(null);
     setCaptchaError("");
@@ -82,6 +80,8 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
       if (container) container.innerHTML = "";
     };
   }, [isOpen]);
+
+  if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
