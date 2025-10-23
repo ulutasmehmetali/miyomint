@@ -230,7 +230,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string, captchaToken?: string) => {
     try {
-      if (!email || !password) {
+      const normalizedEmail = email.trim().toLowerCase();
+      if (!normalizedEmail || !password) {
         return {
           error: {
             message: "E-posta ve sifre zorunludur.",
@@ -244,7 +245,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const signInOptions = captchaToken ? { captchaToken } : undefined;
       const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
         options: signInOptions,
       });
@@ -274,7 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const baseUser: User = {
         id: sessionUser.id,
-        email: sessionUser.email || email,
+        email: sessionUser.email || normalizedEmail,
         full_name: sessionUser.user_metadata?.full_name || "",
         created_at: sessionUser.created_at || new Date().toISOString(),
         email_verified: Boolean(sessionUser.email_confirmed_at),
@@ -287,7 +288,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       ensureProfile(
         sessionUser,
-        email,
+        normalizedEmail,
         sessionUser.user_metadata?.full_name,
         accessToken
       )

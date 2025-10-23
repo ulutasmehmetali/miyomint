@@ -20,6 +20,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaError, setCaptchaError] = useState("");
+  const successRef = useRef(false);
   const captchaWidgetIdRef = useRef<string | null>(null);
 
   const resetCaptcha = () => {
@@ -88,6 +89,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
     setError("");
     setSuccess(false);
     setLoading(true);
+    successRef.current = false;
     console.log("[LoginModal] submit", { email });
 
     try {
@@ -96,7 +98,9 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
         return;
       }
 
-      const { error } = await signIn(email, password, captchaToken ?? undefined);
+      const normalizedEmail = email.trim().toLowerCase();
+
+      const { error } = await signIn(normalizedEmail, password, captchaToken ?? undefined);
       console.log("[LoginModal] signIn result", { error });
 
       if (error) {
@@ -108,13 +112,16 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
       }
 
       setSuccess(true);
+      successRef.current = true;
       setTimeout(() => {
         onClose();
         setEmail("");
         setPassword("");
         setSuccess(false);
+        setCaptchaToken(null);
+        setCaptchaError("");
         console.log("[LoginModal] modal closed");
-      }, 1500);
+      }, 600);
     } catch (err: any) {
       console.error("LoginModal submit error:", err);
       const message = err?.message || "Giriş sırasında beklenmeyen bir hata oluştu.";
@@ -126,7 +133,9 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
     } finally {
       setLoading(false);
       console.log("[LoginModal] loading false");
-      resetCaptcha();
+      if (!successRef.current) {
+        resetCaptcha();
+      }
     }
   };
 
