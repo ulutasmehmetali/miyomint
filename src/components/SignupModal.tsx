@@ -111,8 +111,16 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
 
       console.log("[Signup] verifyCaptcha response", { data, error });
 
-      if (error || !data?.success) {
-        throw new Error(error?.message || data?.error || "Dogrulama basarisiz");
+      const success =
+        data?.success === true ||
+        (typeof data === "object" && data !== null && "data" in data && (data as any).data?.success === true) ||
+        (typeof data === "object" &&
+          data !== null &&
+          "verify" in data &&
+          (data as any).verify?.body?.success === true);
+
+      if (error || !success) {
+        throw new Error(error?.message || (data as any)?.error || "Dogrulama basarisiz");
       }
 
       return true;
