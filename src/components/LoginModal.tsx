@@ -111,9 +111,9 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
         return;
       }
 
+      setLoading(false);
       setSuccess(true);
       successRef.current = true;
-      setLoading(false);
       setTimeout(() => {
         onClose();
         setEmail("");
