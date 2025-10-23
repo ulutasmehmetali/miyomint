@@ -12,7 +12,7 @@ interface AuthError {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: AuthError | null }>;
+  signUp: (email: string, password: string, fullName: string, captchaToken?: string) => Promise<{ error: AuthError | null }>;
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<User>) => Promise<void>;
@@ -172,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, captchaToken?: string) => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -180,6 +180,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         options: {
           data: { full_name: fullName },
           emailRedirectTo: `${window.location.origin}/verify`,
+          captchaToken,
         },
       });
 

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { X, Mail, Lock, User, AlertCircle, CheckCircle } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
-import { supabase } from "../lib/supabaseClient";
 
 interface SignupModalProps {
   isOpen: boolean;
@@ -55,9 +54,7 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
     let cancelled = false;
 
     const renderCaptcha = () => {
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
       const api = window.hcaptcha;
       const container = document.getElementById(CAPTCHA_CONTAINER_ID);
@@ -96,40 +93,9 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       }
       captchaWidgetIdRef.current = null;
       const container = document.getElementById(CAPTCHA_CONTAINER_ID);
-      if (container) {
-        container.innerHTML = "";
-      }
+      if (container) container.innerHTML = "";
     };
   }, [isOpen]);
-
-  const verifyCaptcha = async (token: string) => {
-    console.log("[Signup] verifyCaptcha start", token ? token.slice(0, 8) + "..." : "no-token");
-    try {
-      const { data, error } = await supabase.functions.invoke("verify-hcaptcha", {
-        body: { token },
-      });
-
-      console.log("[Signup] verifyCaptcha response", { data, error });
-
-      const success =
-        data?.success === true ||
-        (typeof data === "object" && data !== null && "data" in data && (data as any).data?.success === true) ||
-        (typeof data === "object" &&
-          data !== null &&
-          "verify" in data &&
-          (data as any).verify?.body?.success === true);
-
-      if (error || !success) {
-        throw new Error(error?.message || (data as any)?.error || "Dogrulama basarisiz");
-      }
-
-      return true;
-    } catch (err: any) {
-      console.error("hCaptcha validation error:", err);
-      setCaptchaError(err?.message || "Guvenlik dogrulamasi basarisiz oldu. Lutfen yeniden deneyin.");
-      return false;
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -162,27 +128,23 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       return;
     }
 
-    console.log("[Signup] form submit", { firstName, lastName, email });
     setLoading(true);
 
     try {
-      const captchaOk = await verifyCaptcha(captchaToken);
-      if (!captchaOk) {
-        console.warn("[Signup] captcha verification failed");
-        resetCaptcha();
-        setLoading(false);
-        return;
-      }
-      console.log("[Signup] captcha verified");
-
       const fullName = `${firstName.trim()} ${lastName.trim()}`;
-      console.log("[Signup] calling signUp", { email, fullName });
-      const { error: signUpError } = await signUp(email, password, fullName);
+      const { error: signUpError } = await signUp(
+        email,
+        password,
+        fullName,
+        captchaToken ?? undefined
+      );
 
       if (signUpError) {
         const message = signUpError.message || "Kayit sirasinda bir hata olustu.";
 
-        if (message.toLowerCase().includes("already registered")) {
+        if (message.toLowerCase().includes("captcha")) {
+          setCaptchaError(message);
+        } else if (message.toLowerCase().includes("already registered")) {
           setError("Bu e-posta adresiyle zaten bir hesap acilmis. Lutfen giris yapmayi deneyin.");
         } else {
           setError(message);
@@ -196,7 +158,12 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
       resetForm();
     } catch (err: any) {
       console.error("Signup error:", err);
-      setError(`Bir hata olustu: ${err?.message || "Bilinmeyen hata"}`);
+      const message = err?.message || "Bilinmeyen hata";
+      if (message.toLowerCase().includes("captcha")) {
+        setCaptchaError(message);
+      } else {
+        setError(`Bir hata olustu: ${message}`);
+      }
       resetCaptcha();
     } finally {
       setLoading(false);
@@ -343,7 +310,7 @@ export default function SignupModal({ isOpen, onClose, onSwitchToLogin }: Signup
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   minLength={6}
-                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-transparent"
+                  className="w-full pl-11 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus-border-transparent"
                   placeholder="Sifrenizi tekrar girin"
                 />
               </div>
