@@ -1,0 +1,3 @@
+TOKEN=""
+
+echo "token="

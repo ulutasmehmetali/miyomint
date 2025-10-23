@@ -242,48 +242,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       console.log("[Auth] signIn started", { email });
 
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: SUPABASE_ANON_KEY,
-          Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ email, password, captchaToken }),
+      const signInOptions = captchaToken ? { captchaToken } : undefined;
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+        options: signInOptions,
       });
 
-      const payload = await response.json();
-      console.log("[Auth] raw token response", payload);
-
-      if (!response.ok) {
-        const message =
-          payload?.error_description ||
-          payload?.error ||
-          payload?.message ||
-          "E-posta veya sifre hatali.";
+      if (error) {
         return {
           error: {
-            message,
-            name: payload?.error?.toString() || "InvalidCredentials",
-            status: response.status,
+            message: error.message || "E-posta veya sifre hatali.",
+            name: error.name || "InvalidCredentials",
+            status: error.status || 400,
           },
         };
       }
 
-      const accessToken = payload.access_token;
-      const refreshToken = payload.refresh_token;
-
-      if (!accessToken || !refreshToken) {
-        return {
-          error: {
-            message: "Sunucudan beklenen oturum bilgileri alinmadi.",
-            name: "MissingTokens",
-            status: 500,
-          },
-        };
-      }
-
-      const sessionUser = payload.user;
+      const session = data.session;
+      const sessionUser = data.user;
 
       if (!sessionUser) {
         return {
@@ -306,20 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(baseUser);
       console.log("[Auth] baseUser set", baseUser);
 
-      supabase.auth
-        .setSession({
-          access_token: accessToken,
-          refresh_token: refreshToken,
-        })
-        .then(({ data: sessionData, error: sessionError }) => {
-          console.log("[Auth] setSession async result", { sessionData, sessionError });
-          if (sessionError) {
-            console.error("Oturum senkronizasyonu hatasi:", sessionError);
-          }
-        })
-        .catch((sessionErr) => {
-          console.error("setSession beklenmedik hata:", sessionErr);
-        });
+      const accessToken = session?.access_token;
 
       ensureProfile(
         sessionUser,
