@@ -113,6 +113,7 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
 
       setSuccess(true);
       successRef.current = true;
+      setLoading(false);
       setTimeout(() => {
         onClose();
         setEmail("");
@@ -130,11 +131,12 @@ export default function LoginModal({ isOpen, onClose, onSwitchToSignup }: LoginM
       } else {
         setError(message);
       }
-    } finally {
       setLoading(false);
+    } finally {
       console.log("[LoginModal] loading false");
       if (!successRef.current) {
         resetCaptcha();
+        setLoading(false);
       }
     }
   };
